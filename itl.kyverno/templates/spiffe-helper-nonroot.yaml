@@ -9,6 +9,15 @@
 # present and mounted, since the consuming library silently skips a certificate it can't read
 # rather than erroring on the missing permission.
 #
+# Uses mutate.foreach, not a top-level precondition filtering spec.initContainers/spec.containers
+# directly - confirmed live (2026-10-29): a precondition like
+# "length(request.object.spec.initContainers[?name=='spiffe-helper']) > 0" throws a JMESPath
+# error ("Invalid type for: <nil>") for any pod that has no initContainers at all (the field is
+# then null, not an empty array), and with this policy's failurePolicy=Fail, that error BLOCKED
+# ADMISSION of every such pod cluster-wide - most pods, since initContainers is optional and
+# commonly absent. foreach over a null/absent list is a documented no-op in Kyverno, which is
+# what actually makes this policy safe to run as a blanket ClusterPolicy.
+#
 # Cluster-wide and app-agnostic on purpose - this is the whole point of moving the fix here
 # instead of patching every chart that uses SPIFFE workload identity individually. The uid/gid
 # below must match whatever uid the consuming application's own containers run as (this
@@ -28,6 +37,13 @@ metadata:
       instead of its root default, so the SVID files it writes are readable by application
       containers running as that same non-root uid.
 spec:
+  # Ignore, not Fail: confirmed live (2026-10-29) that a JMESPath error in this policy - over an
+  # optional field like initContainers, entirely absent from the admission request JSON for most
+  # pods rather than merely null - blocks admission of every pod matching the rule's `match`
+  # block, cluster-wide, with failurePolicy: Fail (Kyverno's own default). Ignore degrades a
+  # future bug in this policy to "mutation silently skipped", not "cluster-wide pod creation
+  # outage" - a correctness bug here should never be able to take down the whole cluster.
+  failurePolicy: Ignore
   rules:
     - name: set-securitycontext-init
       match:
@@ -35,25 +51,27 @@ spec:
           - resources:
               kinds:
                 - Pod
-      preconditions:
-        all:
-          - key: {{ `"{{ request.object.spec.initContainers[?name == 'spiffe-helper'] | length(@) }}"` }}
-            operator: GreaterThan
-            value: 0
       mutate:
-        patchStrategicMerge:
-          spec:
-            initContainers:
-              - (name): "spiffe-helper"
-                securityContext:
-                  runAsUser: {{ .Values.policies.spiffeHelperNonRoot.uid }}
-                  runAsGroup: {{ .Values.policies.spiffeHelperNonRoot.gid }}
-                  runAsNonRoot: true
-                  allowPrivilegeEscalation: false
-                  capabilities:
-                    drop: ["ALL"]
-                  seccompProfile:
-                    type: RuntimeDefault
+        foreach:
+          - list: "request.object.spec.initContainers || []"
+            preconditions:
+              all:
+                - key: "{{ `{{ element.name }}` }}"
+                  operator: Equals
+                  value: "spiffe-helper"
+            patchStrategicMerge:
+              spec:
+                initContainers:
+                  - name: "{{ `{{ element.name }}` }}"
+                    securityContext:
+                      runAsUser: {{ .Values.policies.spiffeHelperNonRoot.uid }}
+                      runAsGroup: {{ .Values.policies.spiffeHelperNonRoot.gid }}
+                      runAsNonRoot: true
+                      allowPrivilegeEscalation: false
+                      capabilities:
+                        drop: ["ALL"]
+                      seccompProfile:
+                        type: RuntimeDefault
 
     - name: set-securitycontext-container
       match:
@@ -61,23 +79,25 @@ spec:
           - resources:
               kinds:
                 - Pod
-      preconditions:
-        all:
-          - key: {{ `"{{ request.object.spec.containers[?name == 'spiffe-helper'] | length(@) }}"` }}
-            operator: GreaterThan
-            value: 0
       mutate:
-        patchStrategicMerge:
-          spec:
-            containers:
-              - (name): "spiffe-helper"
-                securityContext:
-                  runAsUser: {{ .Values.policies.spiffeHelperNonRoot.uid }}
-                  runAsGroup: {{ .Values.policies.spiffeHelperNonRoot.gid }}
-                  runAsNonRoot: true
-                  allowPrivilegeEscalation: false
-                  capabilities:
-                    drop: ["ALL"]
-                  seccompProfile:
-                    type: RuntimeDefault
+        foreach:
+          - list: "request.object.spec.containers"
+            preconditions:
+              all:
+                - key: "{{ `{{ element.name }}` }}"
+                  operator: Equals
+                  value: "spiffe-helper"
+            patchStrategicMerge:
+              spec:
+                containers:
+                  - name: "{{ `{{ element.name }}` }}"
+                    securityContext:
+                      runAsUser: {{ .Values.policies.spiffeHelperNonRoot.uid }}
+                      runAsGroup: {{ .Values.policies.spiffeHelperNonRoot.gid }}
+                      runAsNonRoot: true
+                      allowPrivilegeEscalation: false
+                      capabilities:
+                        drop: ["ALL"]
+                      seccompProfile:
+                        type: RuntimeDefault
 {{- end }}

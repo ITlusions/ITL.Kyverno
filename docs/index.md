@@ -2,7 +2,7 @@
 
 Documents are grouped into numbered folders. Each file is named `x.y-title.md`, where `x` is the folder number. Start with **1. Overview**.
 
-State on 2026-10-29: the chart is scaffolded and lints clean, with one policy written (`spiffe-helper-nonroot`). Not yet committed, not yet deployed to the cluster - see [1.2 Deployment](1-overview/1.2-deployment.md) for status.
+State on 2026-10-29: deployed and verified live on the `itl` cluster (Helm release `kyverno`, revision 7). One policy (`spiffe-helper-nonroot`) is `Ready` and tested against both a matching and a non-matching pod - see [1.2 Deployment](1-overview/1.2-deployment.md) for the two cluster-wide-outage bugs found and fixed getting there.
 
 ## 1. Overview
 

@@ -2,7 +2,7 @@
 
 [Kyverno](https://kyverno.io/) for the ITL Talos cluster ([`ITlusions/ITL.K8s`](https://github.com/ITlusions/ITL.K8s)) - a Kubernetes-native policy engine (mutate/validate/generate admission control), introduced as **reusable cluster infrastructure**, not a one-off fix bolted onto a single app chart.
 
-**Status: scaffolded, not yet deployed.** This chart exists; it has not been installed on the cluster yet and no policies exist.
+**Status: deployed and verified live** on the `itl` cluster, 2026-10-29. One policy, `spiffe-helper-nonroot`, is active and tested - see `docs/` for the full write-up, including two cluster-wide-admission-outage bugs found and fixed while getting it live (a `failurePolicy: Fail` default plus a JMESPath null-handling bug briefly blocked pod creation cluster-wide, twice, each caught within about a minute).
 
 ## Why this exists
 
@@ -14,7 +14,7 @@ Same reasoning as `ITL.Identity.Spire`: Kyverno's own admission-webhook/controll
 
 ## Policies
 
-None yet - `templates/` is empty. The first one planned is the `spiffe-helper` non-root mutate policy described above; see `ITL.Openproject.fork`'s docs (`docs/5-authentication/5.3-spiffe-mtls-postgres.md`) for the concrete bug this fixes.
+- `spiffe-helper-nonroot` (`itl.kyverno/templates/spiffe-helper-nonroot.yaml`): the non-root mutate policy described above. See `ITL.Openproject.fork`'s docs (`docs/5-authentication/5.3-spiffe-mtls-postgres.md`) for the concrete bug this fixes, and `docs/2-policies/2.1-spiffe-helper-nonroot.md` in this repo for how it's implemented and the bugs found deploying it.
 
 ## Deploy
 
