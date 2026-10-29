@@ -13,3 +13,12 @@ policies:
     enabled: true
     uid: 1000   # must match the uid the consuming app's own containers run as - this cluster's charts standardise on 1000
     gid: 1000
+
+  spiffeHelperInject:
+    enabled: true
+    annotation: "spiffe.itlusions.local/inject"   # set to "true" on a pod template to opt in
+    sidecarName: spiffe-helper
+    uid: 1000
+    gid: 1000
+    spiffeHelperImage: "ghcr.io/spiffe/spiffe-helper:0.11.0"
+    initHelperImage: "busybox:1.37"   # only needs /bin/sh to write one file - deliberately tiny, not the spiffe-helper image itself (which has no shell at all, confirmed live in ITL.Openproject.fork)

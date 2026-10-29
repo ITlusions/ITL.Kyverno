@@ -1,0 +1,125 @@
+{{- if .Values.policies.spiffeHelperInject.enabled }}
+# Annotation-driven SVID sidecar injection, reusable cluster-wide: any pod template that carries
+# the annotation below gets a full spiffe-helper setup (CSI volume, certs volume, config, the
+# native-sidecar container itself) added at admission time, without that workload's own chart
+# needing to hand-roll it the way ITL.Openproject.fork had to (see that repo's
+# docs/5-authentication/5.3-spiffe-mtls-postgres.md for everything that took to get right by
+# hand). This is the generic version of that work, offered to every future consumer as "add one
+# annotation" instead of "patch your chart's templates".
+#
+# Opt-in annotation (on the POD template, not the Deployment/Job itself):
+#   {{ .Values.policies.spiffeHelperInject.annotation }}: "true"
+#
+# Does NOT mount anything into the workload's own application container(s) - this policy has no
+# way to know which of a pod's containers actually need /certs, and mounting it into all of them
+# unconditionally would be a bigger, riskier default than this policy should make on a consumer's
+# behalf. The consuming chart still adds its own volumeMounts (same shape as
+# ITL.Openproject.fork's extraVolumeMounts - spiffe-workload-api, spire-certs, both emptyDir/CSI,
+# both harmless to mount even before this policy's injected sidecar ever writes to them).
+#
+# No ConfigMap: unlike ITL.Openproject.fork's own spiffe-helper-configmap.yaml (namespace-scoped,
+# fine for one app's own chart), a cluster-wide injector cannot assume a ConfigMap already exists
+# in whatever namespace the matching pod happens to land in, and Kubernetes volumes can only
+# reference a ConfigMap in the same namespace as the pod. Matches cofide/spiffe-enable's own
+# approach (verified by reading its source during evaluation): the config content is a literal
+# string patched in as an env var, written to an emptyDir by a small init container, read by the
+# spiffe-helper sidecar from there - fully self-contained, nothing to pre-create per namespace.
+#
+# Same failurePolicy: Ignore and mutate.foreach-with-null-coalesce discipline as
+# spiffe-helper-nonroot.yaml in this same chart - see docs/1-overview/1.2-deployment.md for why
+# that is not optional for any ClusterPolicy matching every Pod with no scoping.
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: spiffe-helper-inject
+  annotations:
+    policies.kyverno.io/title: SPIFFE Helper Injection
+    policies.kyverno.io/category: SPIFFE / Workload Identity
+    policies.kyverno.io/severity: medium
+    policies.kyverno.io/description: >-
+      Injects a full spiffe-helper native-sidecar setup (CSI volume, certs volume, config,
+      container) into any pod template annotated
+      {{ .Values.policies.spiffeHelperInject.annotation }}: "true", so a workload can opt into
+      SPIFFE-issued SVIDs without its own chart hand-rolling the sidecar.
+spec:
+  failurePolicy: Ignore
+  rules:
+    - name: inject-spiffe-helper
+      match:
+        any:
+          - resources:
+              kinds:
+                - Pod
+              annotations:
+                {{ .Values.policies.spiffeHelperInject.annotation }}: "true"
+      preconditions:
+        all:
+          # Skip pods the injection has already run on (re-admission, e.g. after a node
+          # reschedule) - checked via the sidecar container's own name, foreach-safe the same way
+          # as spiffe-helper-nonroot.yaml.
+          - key: {{ "\"{{ request.object.spec.initContainers[].name || `[]` }}\"" }}
+            operator: AllNotIn
+            value:
+              - "{{ .Values.policies.spiffeHelperInject.sidecarName }}"
+      mutate:
+        patchStrategicMerge:
+          spec:
+            volumes:
+              - name: spiffe-workload-api
+                csi:
+                  driver: csi.spiffe.io
+                  readOnly: true
+              - name: spire-certs
+                emptyDir: {}
+              - name: spiffe-helper-config
+                emptyDir: {}
+            initContainers:
+              - name: spiffe-helper-config-writer
+                image: {{ .Values.policies.spiffeHelperInject.initHelperImage | quote }}
+                command: ["/bin/sh", "-c"]
+                args:
+                  - 'printf "%s" "$SPIFFE_HELPER_CONFIG" > /spiffe-helper-config/spiffe-helper.conf'
+                env:
+                  - name: SPIFFE_HELPER_CONFIG
+                    value: |
+                      agent_address = "/spiffe-workload-api/spire-agent.sock"
+                      cert_dir = "/certs"
+                      svid_file_name = "tls.crt"
+                      svid_key_file_name = "tls.key"
+                      svid_bundle_file_name = "ca.pem"
+                      renew_signal = ""
+                securityContext:
+                  runAsUser: {{ .Values.policies.spiffeHelperInject.uid }}
+                  runAsGroup: {{ .Values.policies.spiffeHelperInject.gid }}
+                  runAsNonRoot: true
+                  allowPrivilegeEscalation: false
+                  capabilities:
+                    drop: ["ALL"]
+                  seccompProfile:
+                    type: RuntimeDefault
+                volumeMounts:
+                  - name: spiffe-helper-config
+                    mountPath: /spiffe-helper-config
+              - name: {{ .Values.policies.spiffeHelperInject.sidecarName | quote }}
+                image: {{ .Values.policies.spiffeHelperInject.spiffeHelperImage | quote }}
+                restartPolicy: Always
+                args: ["-config", "/spiffe-helper-config/spiffe-helper.conf", "-daemon-mode=true"]
+                securityContext:
+                  runAsUser: {{ .Values.policies.spiffeHelperInject.uid }}
+                  runAsGroup: {{ .Values.policies.spiffeHelperInject.gid }}
+                  runAsNonRoot: true
+                  allowPrivilegeEscalation: false
+                  capabilities:
+                    drop: ["ALL"]
+                  seccompProfile:
+                    type: RuntimeDefault
+                volumeMounts:
+                  - name: spiffe-workload-api
+                    mountPath: /spiffe-workload-api
+                    readOnly: true
+                  - name: spiffe-helper-config
+                    mountPath: /spiffe-helper-config
+                    readOnly: true
+                  - name: spire-certs
+                    mountPath: /certs
+{{- end }}

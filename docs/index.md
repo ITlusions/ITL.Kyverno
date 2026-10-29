@@ -11,7 +11,8 @@ State on 2026-10-29: deployed and verified live on the `itl` cluster (Helm relea
 
 ## 2. Policies
 
-- [2.1 SPIFFE Helper non-root](2-policies/2.1-spiffe-helper-nonroot.md): the first and so-far-only policy - why it exists, what it patches, the bug it fixes, its limits.
+- [2.1 SPIFFE Helper non-root](2-policies/2.1-spiffe-helper-nonroot.md): why it exists, what it patches, the bug it fixes, its limits.
+- [2.2 SPIFFE Helper injection](2-policies/2.2-spiffe-helper-inject.md): annotation-driven, reusable sidecar injection - any pod can opt into an SVID without its own chart hand-rolling the sidecar.
 
 ## Related repositories
 

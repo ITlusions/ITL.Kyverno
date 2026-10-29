@@ -15,6 +15,7 @@ Same reasoning as `ITL.Identity.Spire`: Kyverno's own admission-webhook/controll
 ## Policies
 
 - `spiffe-helper-nonroot` (`itl.kyverno/templates/spiffe-helper-nonroot.yaml`): the non-root mutate policy described above. See `ITL.Openproject.fork`'s docs (`docs/5-authentication/5.3-spiffe-mtls-postgres.md`) for the concrete bug this fixes, and `docs/2-policies/2.1-spiffe-helper-nonroot.md` in this repo for how it's implemented and the bugs found deploying it.
+- `spiffe-helper-inject` (`itl.kyverno/templates/spiffe-helper-inject.yaml`): annotate a pod template with `spiffe.itlusions.local/inject: "true"` and it gets a full `spiffe-helper` native-sidecar setup (CSI volume, certs volume, config, container) at admission time - no chart changes needed. See `docs/2-policies/2.2-spiffe-helper-inject.md`.
 
 ## Deploy
 
