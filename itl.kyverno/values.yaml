@@ -1,0 +1,15 @@
+# ITL Kyverno wrapper. Everything not listed here is upstream's own chart default
+# (`helm show values kyverno/kyverno`) - Kyverno is stateless (policies are CRDs,
+# stored in etcd, no PVC of its own), so there is little that is actually
+# cluster-specific to override, unlike e.g. ITL.Identity.Spire's storage class.
+
+kyverno:
+  admissionController:
+    replicas: 1   # single-cluster lab (3 worker nodes: itl-w01..03) - raise for HA once this is load-bearing, not just advisory policies
+
+# This wrapper's own policies (templates/), not upstream Kyverno values.
+policies:
+  spiffeHelperNonRoot:
+    enabled: true
+    uid: 1000   # must match the uid the consuming app's own containers run as - this cluster's charts standardise on 1000
+    gid: 1000

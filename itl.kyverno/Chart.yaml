@@ -1,0 +1,19 @@
+apiVersion: v2
+name: itl-kyverno
+description: >-
+  Thin wrapper around the upstream Kyverno Helm chart for the ITL Talos
+  cluster - a Kubernetes-native policy engine (mutate/validate/generate
+  admission control) used as reusable cluster infrastructure rather than
+  per-app, hand-rolled fixes. First concrete use: a generic mutate policy
+  that sets a non-root securityContext on any "spiffe-helper" sidecar
+  container (see templates/ once added), instead of patching every
+  individual app chart that uses SPIFFE workload identity
+  (ITL.Identity.Spire) one at a time.
+type: application
+version: 0.1.0
+appVersion: "v1.19.2"
+
+dependencies:
+  - name: kyverno
+    version: "3.9.2"   # current as of 2026-10-29 per kyverno.github.io/kyverno - re-check before `helm dependency update` if this sits unreleased for a while
+    repository: "https://kyverno.github.io/kyverno/"

@@ -1,0 +1,83 @@
+{{- if .Values.policies.spiffeHelperNonRoot.enabled }}
+# Sets a non-root securityContext on any container named "spiffe-helper", wherever it appears
+# in a Pod (initContainers - the native-sidecar placement ITL.Openproject.fork and the cofide
+# spiffe-enable injector both use - or plain containers). Without this, spiffe-helper runs as
+# root by default and writes tls.key as 0600 root:root, unreadable by any application container
+# that runs as a non-root uid - confirmed live against ITL.Openproject.fork
+# (docs/5-authentication/5.3-spiffe-mtls-postgres.md in that repo): the symptom is
+# "PG::ConnectionBad: ... requires a valid client certificate" even with the file physically
+# present and mounted, since the consuming library silently skips a certificate it can't read
+# rather than erroring on the missing permission.
+#
+# Cluster-wide and app-agnostic on purpose - this is the whole point of moving the fix here
+# instead of patching every chart that uses SPIFFE workload identity individually. The uid/gid
+# below must match whatever uid the consuming application's own containers run as (this
+# cluster's charts standardise on 1000 - ITL.Openproject.fork, the Bitnami-pattern charts
+# generally) for the files to actually be group-readable once written.
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: spiffe-helper-nonroot
+  annotations:
+    policies.kyverno.io/title: SPIFFE Helper Non-Root
+    policies.kyverno.io/category: SPIFFE / Workload Identity
+    policies.kyverno.io/severity: medium
+    policies.kyverno.io/description: >-
+      Mutates any container named "spiffe-helper" (initContainers or containers) to run as
+      {{ .Values.policies.spiffeHelperNonRoot.uid }}:{{ .Values.policies.spiffeHelperNonRoot.gid }}
+      instead of its root default, so the SVID files it writes are readable by application
+      containers running as that same non-root uid.
+spec:
+  rules:
+    - name: set-securitycontext-init
+      match:
+        any:
+          - resources:
+              kinds:
+                - Pod
+      preconditions:
+        all:
+          - key: {{ `"{{ request.object.spec.initContainers[?name == 'spiffe-helper'] | length(@) }}"` }}
+            operator: GreaterThan
+            value: 0
+      mutate:
+        patchStrategicMerge:
+          spec:
+            initContainers:
+              - (name): "spiffe-helper"
+                securityContext:
+                  runAsUser: {{ .Values.policies.spiffeHelperNonRoot.uid }}
+                  runAsGroup: {{ .Values.policies.spiffeHelperNonRoot.gid }}
+                  runAsNonRoot: true
+                  allowPrivilegeEscalation: false
+                  capabilities:
+                    drop: ["ALL"]
+                  seccompProfile:
+                    type: RuntimeDefault
+
+    - name: set-securitycontext-container
+      match:
+        any:
+          - resources:
+              kinds:
+                - Pod
+      preconditions:
+        all:
+          - key: {{ `"{{ request.object.spec.containers[?name == 'spiffe-helper'] | length(@) }}"` }}
+            operator: GreaterThan
+            value: 0
+      mutate:
+        patchStrategicMerge:
+          spec:
+            containers:
+              - (name): "spiffe-helper"
+                securityContext:
+                  runAsUser: {{ .Values.policies.spiffeHelperNonRoot.uid }}
+                  runAsGroup: {{ .Values.policies.spiffeHelperNonRoot.gid }}
+                  runAsNonRoot: true
+                  allowPrivilegeEscalation: false
+                  capabilities:
+                    drop: ["ALL"]
+                  seccompProfile:
+                    type: RuntimeDefault
+{{- end }}
